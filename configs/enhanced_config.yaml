@@ -1,0 +1,401 @@
+# Enhanced AMPT Configuration for Advanced Crop Identification
+# Implements Core Innovations:
+# 1. Cross-Modal Phenological Attention (CMPA)
+# 2. Hierarchical Scale-Adaptive Fusion  
+# 3. Foundation Model Adaptation
+
+# Dataset Configuration
+dataset:
+  name: "AgriFieldNetIndia"
+  source: "RadiantMLHub"
+  classes: 6  # Mapped from 13 AgriFieldNet classes
+  class_names: ["Rice", "Wheat", "Sugarcane", "Cotton", "Maize", "Other"]
+  agrifieldnet_mapping:
+    # Map 13 AgriFieldNet classes to 6 AMPT classes
+    rice: 0
+    wheat: 1
+    sugarcane: 2
+    cotton: 3
+    maize: 4
+    mustard: 5      # → Other
+    gram: 5         # → Other
+    lentil: 5       # → Other
+    castor: 5       # → Other
+    pearl_millet: 5 # → Other
+    cluster_bean: 5 # → Other
+    sorghum: 5      # → Other
+    groundnut: 5    # → Other
+
+# Model Architecture Configuration
+model:
+  name: "EnhancedAMPT"
+  type: "multi_modal_temporal"
+  
+  # Basic dimensions
+  num_classes: 6
+  optical_channels: 6  # Sentinel-2: Blue, Green, Red, NIR, SWIR1, SWIR2
+  sar_channels: 2      # VV, VH polarizations
+  weather_features: 5  # Temperature, humidity, precipitation, wind, pressure
+  num_time_steps: 6    # 6-month temporal sequence
+  
+  # Foundation Model Backbone Configuration
+  backbone:
+    type: "PrithviViT"  # IBM-NASA foundation model
+    img_size: 224
+    patch_size: 16
+    pretrained: true
+    freeze_layers: 4      # Freeze first 4 layers
+    adaptation_layers: 2  # Add 2 adaptation layers
+    
+  # Core Innovation 1: Phenological Stage Encoder
+  phenological_encoder:
+    input_dim: 8         # optical_channels + sar_channels
+    hidden_dim: 256
+    num_stages: 5        # Sowing, Vegetative, Flowering, Maturation, Harvest
+    temporal_conv_layers: 3
+    stage_embedding_dim: 128
+    
+  # Core Innovation 2: Hierarchical Scale Processor
+  hierarchical_scales:
+    field_scale:
+      patch_size: 16     # Fine-grained field characteristics
+      channels: 256
+    landscape_scale:
+      patch_size: 64     # Medium-scale patterns
+      channels: 256
+      pooling: 2
+    regional_scale:
+      patch_size: 256    # Coarse regional context
+      channels: 256
+      pooling: 4
+    fusion_method: "transformer"
+    num_attention_heads: 8
+    
+  # Core Innovation 3: Cross-Modal Attention
+  cross_modal_attention:
+    hidden_dim: 256
+    num_heads: 8
+    dropout: 0.1
+    phenological_guidance: true
+    adaptive_weighting: true
+    
+  # Temporal Processing
+  temporal_lstm:
+    hidden_size: 256
+    num_layers: 2
+    bidirectional: true
+    dropout: 0.1
+    
+  # Multi-task Heads
+  classification_head:
+    hidden_dims: [256, 128]
+    dropout: 0.2
+    
+  segmentation_head:
+    hidden_dims: [256, 128]
+    upsampling_method: "bilinear"
+    
+  phenology_head:
+    hidden_dims: [256, 128]
+    num_stages: 5
+
+# Training Configuration
+training:
+  # Basic training parameters
+  epochs: 50
+  batch_size: 8        # Reduced for large model and memory constraints
+  learning_rate: 1e-4
+  weight_decay: 1e-4
+  gradient_clip_val: 1.0
+  precision: "16-mixed"  # Mixed precision for memory efficiency
+  
+  # Learning rate scheduling
+  scheduler:
+    type: "CosineAnnealingLR"
+    T_max: 50
+    eta_min: 1e-6
+    
+  # Optimizer configuration
+  optimizer:
+    type: "AdamW"
+    backbone_lr_multiplier: 0.1  # Lower LR for pretrained backbone
+    
+  # Validation and checkpointing
+  val_check_interval: 0.5
+  patience: 10
+  monitor_metric: "val_f1"
+  
+  # Data augmentation for enhanced training
+  augmentation:
+    enabled: true
+    rotation: 15
+    flip_horizontal: true
+    flip_vertical: false
+    color_jitter:
+      brightness: 0.1
+      contrast: 0.1
+      saturation: 0.1
+    gaussian_noise: 0.01
+    temporal_shift: 1  # Shift temporal sequences by ±1 time step
+    
+  # Reproducibility
+  seed: 42
+  deterministic: true
+
+# Loss Configuration
+loss:
+  # Multi-task loss weights
+  crop_weight: 1.0           # Primary crop classification
+  segmentation_weight: 1.0   # Pixel-level segmentation
+  phenology_weight: 0.5      # Auxiliary phenological stage
+  consistency_weight: 0.1    # Phenological consistency
+  
+  # Loss functions
+  crop_loss: "CrossEntropyLoss"
+  segmentation_loss: "CrossEntropyLoss"
+  phenology_loss: "CrossEntropyLoss"
+  
+  # Class weighting for imbalanced data
+  class_weights: [1.0, 1.2, 0.8, 1.1, 1.0, 0.9]  # Adjust for crop distribution
+  ignore_index: 255  # For segmentation masks
+
+# Data Configuration
+data:
+  # Path configuration
+  root_dir: "data/agrifieldnet"
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  
+  # Data preprocessing
+  normalization:
+    # Sentinel-2 normalization (per-band statistics from AgriFieldNet)
+    optical_mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406]
+    optical_std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]
+    
+    # SAR normalization (VV, VH in dB)
+    sar_mean: [-12.0, -18.0]
+    sar_std: [3.0, 4.0]
+    
+    # Weather normalization
+    weather_mean: [25.0, 60.0, 100.0, 15.0, 1013.0]  # temp, humidity, precip, wind, pressure
+    weather_std: [8.0, 20.0, 50.0, 5.0, 10.0]
+  
+  # Spatial configuration
+  image_size: 224
+  patch_size: 16
+  
+  # Temporal configuration
+  temporal_length: 6
+  temporal_step: 30  # Days between time steps
+  
+  # Multi-modal data loading
+  load_optical: true
+  load_sar: true
+  load_weather: true
+  load_temporal: true
+  load_masks: true
+  
+  # Data loading optimization
+  num_workers: 4
+  pin_memory: true
+  persistent_workers: true
+
+# Path Configuration
+paths:
+  # Data paths
+  data_dir: "data/agrifieldnet"
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  
+  # Output paths
+  output_dir: "outputs"
+  checkpoints_dir: "outputs/checkpoints"
+  logs_dir: "outputs/logs"
+  results_dir: "outputs/results"
+  submissions_dir: "outputs/submissions"
+  
+  # Model paths
+  pretrained_backbone: "models/prithvi_100M.pt"
+  best_model: "outputs/checkpoints/enhanced_ampt_best.ckpt"
+
+# Evaluation Configuration
+evaluation:
+  # Metrics to compute
+  metrics:
+    - "accuracy"
+    - "f1_score"
+    - "precision"
+    - "recall"
+    - "iou"
+    - "confusion_matrix"
+    
+  # Per-class evaluation
+  per_class_metrics: true
+  
+  # Visualization settings
+  generate_plots: true
+  save_predictions: true
+  plot_attention_maps: true
+  plot_phenological_analysis: true
+  plot_scale_analysis: true
+  
+  # Test-time augmentation
+  tta:
+    enabled: false
+    num_augmentations: 5
+
+# Innovation-Specific Configuration
+innovations:
+  # Core Innovation 1: Cross-Modal Phenological Attention
+  cmpa:
+    enabled: true
+    temporal_window: 6
+    attention_temperature: 0.1
+    phenological_guidance_weight: 0.5
+    
+  # Core Innovation 2: Hierarchical Scale-Adaptive Fusion
+  hierarchical_fusion:
+    enabled: true
+    boundary_aware_attention: true
+    inter_scale_fusion: "transformer"
+    positional_encoding: "sinusoidal"
+    
+  # Core Innovation 3: Foundation Model Adaptation
+  foundation_adaptation:
+    enabled: true
+    backbone_name: "prithvi_100M"
+    adaptation_strategy: "partial_fine_tuning"
+    domain_adaptation_layers: 2
+    agricultural_pretraining: true
+
+# Monitoring and Logging
+monitoring:
+  # Weights & Biases integration
+  wandb:
+    enabled: false
+    project: "enhanced_ampt_crop_classification"
+    entity: "your_wandb_entity"
+    
+  # TensorBoard logging
+  tensorboard:
+    enabled: true
+    log_graph: true
+    log_images: true
+    log_attention_maps: true
+    
+  # Progress tracking
+  log_every_n_steps: 10
+  val_log_images: 5  # Number of validation images to log
+  
+  # Model checkpointing
+  save_top_k: 3
+  save_last: true
+  monitor: "val_f1"
+  mode: "max"
+
+# Hardware Configuration
+hardware:
+  # GPU configuration
+  gpus: 1
+  mixed_precision: true
+  compile_model: false  # PyTorch 2.0 compilation
+  
+  # Memory optimization
+  gradient_checkpointing: true
+  memory_efficient_attention: true
+  
+  # Distributed training (if available)
+  distributed:
+    enabled: false
+    strategy: "ddp"
+    num_nodes: 1
+
+# Fine-tuning Configuration for Precise Crop Identification
+fine_tuning:
+  # Target accuracy for precise identification
+  target_accuracy: 0.95
+  
+  # Fine-tuning datasets recommended
+  recommended_datasets:
+    primary: "AgriFieldNet India (2019-2021)"
+    supplementary:
+      - "LandCoverNet (Global)"
+      - "EuroCrops (European Union)"
+      - "PASTIS (France)"
+      - "BreizhCrops (Brittany)"
+      - "CropHarvest (Global)"
+    
+  # Domain-specific fine-tuning
+  domain_adaptation:
+    geographical_regions:
+      - "Northern India (Punjab, Haryana)"
+      - "Southern India (Karnataka, Tamil Nadu)"
+      - "Eastern India (West Bengal, Bihar)"
+      - "Western India (Maharashtra, Gujarat)"
+    
+    crop_specific:
+      rice_varieties: ["Basmati", "Non-Basmati", "Aromatic"]
+      wheat_varieties: ["Winter", "Spring", "Durum"]
+      
+  # Progressive fine-tuning strategy
+  progressive_strategy:
+    stage1:
+      description: "Foundation model adaptation"
+      epochs: 10
+      learning_rate: 1e-5
+      frozen_layers: 8
+      
+    stage2:
+      description: "Feature extraction fine-tuning"
+      epochs: 20
+      learning_rate: 5e-5
+      frozen_layers: 4
+      
+    stage3:
+      description: "End-to-end fine-tuning"
+      epochs: 30
+      learning_rate: 1e-4
+      frozen_layers: 0
+
+# Expected Performance Targets
+performance_targets:
+  overall_accuracy: ">90%"
+  per_class_f1: ">85%"
+  inference_time: "<100ms per field"
+  memory_usage: "<4GB"
+  
+  # Innovation-specific targets
+  phenological_attention:
+    modal_balance_accuracy: ">80%"
+    temporal_consistency: ">90%"
+    
+  hierarchical_fusion:
+    scale_contribution_balance: "30%-40%-30%"  # Field-Landscape-Regional
+    boundary_detection_accuracy: ">85%"
+    
+  foundation_adaptation:
+    transfer_learning_gain: ">15% over baseline"
+    convergence_speedup: ">2x faster"
+
+# Research and Development
+research:
+  # Future enhancements
+  planned_improvements:
+    - "Multi-temporal attention mechanisms"
+    - "Uncertainty quantification"
+    - "Active learning integration"
+    - "Federated learning for privacy"
+    
+  # Experimental features
+  experimental:
+    self_supervised_pretraining: false
+    contrastive_learning: false
+    meta_learning: false
+    
+  # Ablation studies
+  ablation_studies:
+    disable_phenological_attention: false
+    disable_hierarchical_fusion: false
+    disable_foundation_adaptation: false
+    use_simple_backbone: false

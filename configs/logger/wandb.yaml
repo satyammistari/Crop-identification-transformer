@@ -1,0 +1,34 @@
+# @package logger
+wandb:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  project: "ampt-crop-classification"
+  entity: null  # Set your wandb entity
+  name: null    # Will be set by experiment name
+  save_dir: "outputs/logs"
+  offline: false
+  log_model: true
+  prefix: ""
+  tags: ["phenological-attention", "multi-modal", "crop-classification"]
+  group: "experiments"
+  
+  # What to log
+  settings:
+    _wandb:
+      value:
+        mode: "online"  # or "offline", "disabled"
+    
+tensorboard:
+  _target_: pytorch_lightning.loggers.TensorBoardLogger
+  save_dir: "outputs/logs/tensorboard"
+  name: "ampt_logs"
+  version: null
+  log_graph: false
+  default_hp_metric: true
+  prefix: ""
+
+csv:
+  _target_: pytorch_lightning.loggers.CSVLogger
+  save_dir: "outputs/logs/csv"
+  name: "ampt_logs"
+  version: null
+  prefix: ""

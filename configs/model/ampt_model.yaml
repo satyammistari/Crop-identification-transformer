@@ -1,0 +1,60 @@
+# @package model
+_target_: src.models.ampt_model.AMPTModel
+
+# Architecture configuration
+backbone_name: "prithvi"
+num_classes: 6
+optical_channels: 6
+sar_channels: 2
+weather_dim: 5
+hidden_dim: 256
+phenology_classes: 4
+temporal_length: 6
+
+# Attention mechanism
+num_heads: 8
+attention_dropout: 0.1
+feed_forward_dim: 512
+
+# Cross-modal phenological attention
+cmpa_config:
+  num_heads: 8
+  dropout: 0.1
+  use_residual: true
+  temperature: 0.1
+
+# Phenology encoder
+phenology_config:
+  conv_channels: [64, 128, 256]
+  lstm_layers: 2
+  dropout: 0.2
+
+# SAR encoder
+sar_config:
+  channels: [32, 64, 128, 256]
+  kernel_sizes: [3, 3, 3, 3]
+  dropout: 0.1
+
+# Decoder configuration
+decoder_config:
+  channels: [256, 128, 64, 32]
+  use_attention: true
+  skip_connections: true
+
+# Loss configuration
+loss_weights:
+  segmentation: 1.0
+  phenology: 0.3
+  growth: 0.2
+  consistency: 0.1
+
+# Optimization
+learning_rate: 1e-4
+weight_decay: 1e-5
+optimizer: "adamw"
+scheduler: "cosine"
+warmup_epochs: 5
+max_epochs: 100
+
+# Class weights for imbalanced dataset
+class_weights: [1.0, 1.2, 0.8, 1.5, 1.1, 0.9]

@@ -1,0 +1,212 @@
+# @package _global_
+defaults:
+  - model: ampt_model
+  - data: agrifieldnet
+  - trainer: default
+  - logger: wandb
+  - _self_
+
+# Global configuration
+experiment_name: "ampt_crop_classification"
+seed: 42
+
+# AMPT Model Configuration for AgriFieldNet Dataset
+model:
+  name: "ampt"
+  num_classes: 6  # AMPT classes: gram, maize, mustard, sugarcane, wheat, other_crop
+  image_size: 256
+  num_time_steps: 6
+  optical_channels: 6  # Updated: B02, B03, B04, B08, B11, B12 (Blue, Green, Red, NIR, SWIR1, SWIR2)
+  sar_channels: 2
+  weather_features: 5
+  
+  # TerraTorch backbone for Sentinel-2 data
+  backbone:
+    name: "PrithviViT"
+    img_size: 224
+    patch_size: 16
+    num_frames: 6  # Match temporal steps
+    tubelet_size: 1
+    in_chans: 6  # Match optical channels
+    embed_dim: 768
+    depth: 12
+    num_heads: 12
+    decoder_embed_dim: 512
+    decoder_depth: 8
+    decoder_num_heads: 16
+    mlp_ratio: 4.0
+    norm_layer: "LayerNorm"
+    drop_path_rate: 0.1
+    mask_ratio: 0.75
+
+# AgriFieldNet Data Configuration
+data:
+  dataset: "agrifieldnet"
+  data_dir: "data"
+  batch_size: 4  # Reduced for larger images
+  num_workers: 4
+  train_split: 0.7
+  val_split: 0.2
+  test_split: 0.1
+  
+  # Sentinel-2 specific settings
+  bands: ['B02', 'B03', 'B04', 'B08', 'B11', 'B12']
+  normalization:
+    mean: [0.485, 0.456, 0.406, 0.5, 0.5, 0.5]  # Per-band normalization
+    std: [0.229, 0.224, 0.225, 0.25, 0.25, 0.25]
+  
+  # AgriFieldNet class mapping
+  class_mapping:
+    gram: 0
+    maize: 1
+    mustard: 2
+    sugarcane: 3
+    wheat: 4
+    other_crop: 5
+
+# Training Configuration for Real Satellite Data
+training:
+  epochs: 50  # Reduced for initial training
+  learning_rate: 5e-5  # Lower LR for real data
+  weight_decay: 1e-4
+  scheduler: "cosine"
+  warmup_epochs: 5
+  gradient_clip: 1.0
+  accumulate_grad_batches: 4  # Effective batch size of 16
+  
+  # Data augmentation
+  augmentation:
+    horizontal_flip: 0.5
+    vertical_flip: 0.5
+    rotation: 15
+    brightness: 0.1
+    contrast: 0.1
+  
+# Loss Configuration for Multi-class Segmentation
+loss:
+  segmentation_weight: 1.0
+  classification_weight: 0.5
+  consistency_weight: 0.2
+  focal_loss:
+    alpha: 0.25
+    gamma: 2.0
+  class_weights: [1.0, 1.2, 1.1, 1.3, 1.0, 0.8]  # Balance for crop frequency
+
+# Evaluation Metrics
+metrics:
+  - "accuracy"
+  - "f1_score"
+  - "iou"
+  - "confusion_matrix"
+  - "per_class_accuracy"
+
+# Logging Configuration
+logging:
+  log_dir: "outputs/logs"
+  log_every_n_steps: 25
+  val_check_interval: 0.25
+  save_top_k: 5
+  monitor: "val_f1_score"
+  mode: "max"
+
+# Hardware Configuration
+hardware:
+  accelerator: "gpu"
+  devices: 1
+  precision: 16
+  strategy: "auto"
+  
+# Output Configuration
+output:
+  checkpoint_dir: "outputs/checkpoints"
+  submission_dir: "outputs/submissions"
+  visualization_dir: "outputs/visualizations"
+  save_predictions: true
+  save_confidence_maps: true
+
+# Data configuration
+data:
+  _target_: src.data.agrifieldnet_datamodule.AgriFieldNetDataModule
+  data_dir: "data"
+  batch_size: 8
+  num_workers: 4
+  pin_memory: true
+  persistent_workers: true
+  
+  # Data processing
+  image_size: [256, 256]
+  temporal_length: 6
+  normalize_stats:
+    optical_mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406]
+    optical_std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]
+    sar_mean: [0.0, 0.0]
+    sar_std: [1.0, 1.0]
+  
+  # Augmentations
+  augmentations:
+    train:
+      random_crop: 0.8
+      horizontal_flip: 0.5
+      vertical_flip: 0.5
+      rotation: 15
+      color_jitter:
+        brightness: 0.2
+        contrast: 0.2
+        saturation: 0.2
+        hue: 0.1
+    val:
+      center_crop: 1.0
+
+# Training configuration
+trainer:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 100
+  precision: 32
+  accelerator: "cpu"
+  devices: 1
+  strategy: "auto"
+  
+  # Callbacks
+  callbacks:
+    - _target_: pytorch_lightning.callbacks.ModelCheckpoint
+      dirpath: "outputs/checkpoints"
+      filename: "ampt-{epoch:02d}-{val_iou:.4f}"
+      monitor: "val_iou"
+      mode: "max"
+      save_top_k: 3
+      save_last: true
+    
+    - _target_: pytorch_lightning.callbacks.EarlyStopping
+      monitor: "val_loss"
+      patience: 15
+      mode: "min"
+    
+    - _target_: pytorch_lightning.callbacks.LearningRateMonitor
+      logging_interval: "step"
+    
+    - _target_: pytorch_lightning.callbacks.RichProgressBar
+
+# Logging configuration
+logger:
+  wandb:
+    _target_: pytorch_lightning.loggers.WandbLogger
+    project: "ampt-crop-classification"
+    name: "${experiment_name}"
+    save_dir: "outputs/logs"
+    log_model: true
+    tags: ["phenological-attention", "multi-modal", "crop-classification"]
+
+# Paths
+paths:
+  data_dir: "data"
+  output_dir: "outputs"
+  checkpoint_dir: "outputs/checkpoints"
+  log_dir: "outputs/logs"
+  submission_dir: "outputs/submissions"
+
+# Competition specific
+competition:
+  name: "AgriFieldNet"
+  submission_format: "tiff"
+  evaluation_metric: "IoU"
+  ignore_index: 255

@@ -1,0 +1,85 @@
+# @package data
+_target_: src.data.agrifieldnet_datamodule.AgriFieldNetDataModule
+
+# Paths
+data_dir: "data"
+train_dir: "train"
+val_dir: "val"
+test_dir: "test"
+
+# Data loading
+batch_size: 8
+num_workers: 4
+pin_memory: true
+persistent_workers: true
+prefetch_factor: 2
+
+# Image processing
+image_size: [256, 256]
+temporal_length: 6
+channels:
+  optical: 6  # R, G, B, NIR, SWIR1, SWIR2
+  sar: 2      # VV, VH
+  weather: 5  # temp, humidity, rainfall, solar, wind
+
+# Normalization statistics (ImageNet adapted for satellite)
+normalize_stats:
+  optical:
+    mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]
+  sar:
+    mean: [0.0, 0.0]
+    std: [1.0, 1.0]
+  weather:
+    mean: [15.0, 60.0, 5.0, 200.0, 10.0]  # temp(C), humidity(%), rain(mm), solar(W/m2), wind(m/s)
+    std: [10.0, 20.0, 5.0, 100.0, 5.0]
+
+# Data augmentation
+augmentations:
+  train:
+    enabled: true
+    random_crop_scale: [0.8, 1.0]
+    random_crop_ratio: [0.8, 1.2]
+    horizontal_flip: 0.5
+    vertical_flip: 0.5
+    rotation_degrees: 15
+    color_jitter:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.2
+      hue: 0.1
+    gaussian_blur: 0.1
+    
+  val:
+    enabled: true
+    center_crop: true
+    
+  test:
+    enabled: false
+
+# Synthetic data generation
+synthetic_data:
+  weather:
+    enabled: true
+    seasonal_variation: true
+    noise_std: 0.1
+  
+  sar:
+    enabled: true
+    noise_std: 0.05
+    
+  temporal:
+    enabled: true
+    interpolation: "linear"
+
+# Sparse labeling support
+sparse_labels:
+  enabled: true
+  ignore_index: 255
+  min_valid_pixels: 100
+
+# Memory optimization
+memory_optimization:
+  cache_data: false  # Set to true if sufficient RAM
+  lazy_loading: true
+  chunk_size: 1000
